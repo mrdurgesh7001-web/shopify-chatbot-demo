@@ -1,14 +1,15 @@
 import streamlit as st
-import json
 from datetime import datetime, timedelta
-import random
+import os
 
 # ============================================
-# SHOPIFY INTEGRATION (Optional - Enable when client ready)
+# SHOPIFY INTEGRATION
 # ============================================
 
 # Set to True when connecting to real Shopify store
 USE_REAL_SHOPIFY = False  # ← Change to True for real integration
+
+SHOPIFY_AVAILABLE = False
 
 if USE_REAL_SHOPIFY:
     try:
@@ -16,44 +17,69 @@ if USE_REAL_SHOPIFY:
         SHOPIFY_AVAILABLE = True
     except ImportError:
         SHOPIFY_AVAILABLE = False
-        st.warning("⚠️ Shopify library not installed. Run: pip install shopify-python-api")
-else:
-    SHOPIFY_AVAILABLE = False
 
 # ============================================
 # SHOPIFY CONFIGURATION
 # ============================================
+# Option 1: Hardcode (for testing only)
+# Option 2: Use .env file (recommended for production)
+#   Create .env file with:
+#   SHOPIFY_SHOP_URL=your-store.myshopify.com
+#   SHOPIFY_API_KEY=your_api_key
+#   SHOPIFY_API_PASSWORD=shpat_your_access_token
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, use hardcoded values
 
 SHOPIFY_CONFIG = {
-    "shop_url": "client-store.myshopify.com",  # Client provides this
-    "api_key": "client_api_key_here",          # Client provides this
-    "api_password": "client_api_password_here" # Client provides this
+    "shop_url": os.getenv("SHOPIFY_SHOP_URL", "your-store.myshopify.com"),
+    "api_key": os.getenv("SHOPIFY_API_KEY", "your_api_key_here"),
+    "api_password": os.getenv("SHOPIFY_API_PASSWORD", "shpat_your_access_token_here"),
 }
+
+# ============================================
+# FIX 1: Corrected connect_to_shopify function
+# Bug: Old code put credentials in URL (broken in modern Shopify)
+# Fix: Use X-Shopify-Access-Token header instead
+# ============================================
 
 def connect_to_shopify(shop_url, api_key, api_password):
     """Connect to client's Shopify store"""
     if not SHOPIFY_AVAILABLE:
         return False
-    
+
     try:
-        shop_url = f"https://{api_key}:{api_password}@{shop_url}/admin/api/2024-01"
-        shopify.ShopifyResource.set_site(shop_url)
+        api_version = "2024-01"
+        shopify.ShopifyResource.set_site(
+            f"https://{shop_url}/admin/api/{api_version}"
+        )
+        shopify.ShopifyResource.set_headers({
+            "X-Shopify-Access-Token": api_password  # ✅ Correct auth method
+        })
+
+        # Test the connection by fetching shop info
+        shop = shopify.Shop.current()
+        st.sidebar.success(f"✅ Connected to: {shop.name}")
         return True
+
     except Exception as e:
-        st.error(f"Shopify connection failed: {e}")
+        st.sidebar.error(f"❌ Shopify connection failed: {e}")
         return False
 
+
 # Connect to Shopify if enabled
+shopify_connected = False
 if USE_REAL_SHOPIFY and SHOPIFY_AVAILABLE:
     shopify_connected = connect_to_shopify(
-        SHOPIFY_CONFIG['shop_url'],
-        SHOPIFY_CONFIG['api_key'],
-        SHOPIFY_CONFIG['api_password']
+        SHOPIFY_CONFIG["shop_url"],
+        SHOPIFY_CONFIG["api_key"],
+        SHOPIFY_CONFIG["api_password"],
     )
-    if shopify_connected:
-        st.sidebar.success("✅ Connected to Shopify!")
-else:
-    shopify_connected = False
+elif USE_REAL_SHOPIFY and not SHOPIFY_AVAILABLE:
+    st.warning("⚠️ Shopify library not installed. Run: pip install shopify-python-api")
 
 # ============================================
 # Page Configuration
@@ -62,18 +88,13 @@ else:
 st.set_page_config(
     page_title="AI Shopping Assistant",
     page_icon="🛍️",
-    layout="centered"
+    layout="centered",
 )
 
-# Custom CSS
 st.markdown("""
 <style>
-    .main {
-        background-color: #f5f5f5;
-    }
-    .stTextInput>div>div>input {
-        background-color: white;
-    }
+    .main { background-color: #f5f5f5; }
+    .stTextInput>div>div>input { background-color: white; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -89,7 +110,7 @@ STORE_CONFIG = {
     "return_days": 30,
     "email": "support@stylehub.com",
     "phone": "+1-800-STYLE",
-    "currency": "$"
+    "currency": "$",
 }
 
 # ============================================
@@ -97,51 +118,11 @@ STORE_CONFIG = {
 # ============================================
 
 PRODUCTS = [
-    {
-        "id": 1,
-        "name": "Classic Denim Jacket",
-        "price": 89.99,
-        "category": "Outerwear",
-        "rating": 4.5,
-        "stock": 15,
-        "image": "🧥"
-    },
-    {
-        "id": 2,
-        "name": "White Sneakers",
-        "price": 79.99,
-        "category": "Shoes",
-        "rating": 4.8,
-        "stock": 8,
-        "image": "👟"
-    },
-    {
-        "id": 3,
-        "name": "Summer Floral Dress",
-        "price": 69.99,
-        "category": "Dresses",
-        "rating": 4.7,
-        "stock": 20,
-        "image": "👗"
-    },
-    {
-        "id": 4,
-        "name": "Leather Crossbody Bag",
-        "price": 129.99,
-        "category": "Accessories",
-        "rating": 4.9,
-        "stock": 12,
-        "image": "👜"
-    },
-    {
-        "id": 5,
-        "name": "Slim Fit Black Jeans",
-        "price": 59.99,
-        "category": "Bottoms",
-        "rating": 4.6,
-        "stock": 25,
-        "image": "👖"
-    }
+    {"id": 1, "name": "Classic Denim Jacket",   "price": 89.99,  "category": "Outerwear",    "rating": 4.5, "stock": 15, "image": "🧥"},
+    {"id": 2, "name": "White Sneakers",          "price": 79.99,  "category": "Shoes",        "rating": 4.8, "stock": 8,  "image": "👟"},
+    {"id": 3, "name": "Summer Floral Dress",     "price": 69.99,  "category": "Dresses",      "rating": 4.7, "stock": 20, "image": "👗"},
+    {"id": 4, "name": "Leather Crossbody Bag",   "price": 129.99, "category": "Accessories",  "rating": 4.9, "stock": 12, "image": "👜"},
+    {"id": 5, "name": "Slim Fit Black Jeans",    "price": 59.99,  "category": "Bottoms",      "rating": 4.6, "stock": 25, "image": "👖"},
 ]
 
 # ============================================
@@ -157,7 +138,7 @@ SAMPLE_ORDERS = {
         "tracking": "TRK789456123",
         "estimated_delivery": (datetime.now() + timedelta(days=2)).strftime("%B %d, %Y"),
         "can_cancel": False,
-        "can_return": False
+        "can_return": False,
     },
     "67890": {
         "order_number": "67890",
@@ -167,7 +148,7 @@ SAMPLE_ORDERS = {
         "tracking": "Processing",
         "estimated_delivery": (datetime.now() + timedelta(days=5)).strftime("%B %d, %Y"),
         "can_cancel": True,
-        "can_return": False
+        "can_return": False,
     },
     "54321": {
         "order_number": "54321",
@@ -177,18 +158,8 @@ SAMPLE_ORDERS = {
         "tracking": "DELIVERED",
         "estimated_delivery": "Delivered on " + (datetime.now() - timedelta(days=3)).strftime("%B %d, %Y"),
         "can_cancel": False,
-        "can_return": True
-    }
-}
-
-# ============================================
-# FAQ DATABASE
-# ============================================
-
-FAQ_DATABASE = {
-    "shipping_time": f"Standard shipping takes {STORE_CONFIG['delivery_days']} business days.",
-    "free_shipping": f"Yes! Free shipping on all orders over ${STORE_CONFIG['free_shipping']}.",
-    "returns": f"We offer {STORE_CONFIG['return_days']}-day free returns on all items.",
+        "can_return": True,
+    },
 }
 
 # ============================================
@@ -199,7 +170,16 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": f"Hello! 👋 Welcome to {STORE_CONFIG['name']}! I'm your AI shopping assistant.\n\n**I can help you with:**\n\n🔍 Product recommendations\n📦 Order tracking\n🔄 Returns & exchanges\n💳 Payment & shipping info\n📧 Exclusive deals\n\nWhat would you like to know?"
+            "content": (
+                f"Hello! 👋 Welcome to **{STORE_CONFIG['name']}**! I'm your AI shopping assistant.\n\n"
+                "**I can help you with:**\n\n"
+                "🔍 Product recommendations\n"
+                "📦 Order tracking\n"
+                "🔄 Returns & exchanges\n"
+                "💳 Payment & shipping info\n"
+                "📧 Exclusive deals\n\n"
+                "What would you like to know?"
+            ),
         }
     ]
 
@@ -215,571 +195,648 @@ if "user_name" not in st.session_state:
 
 def track_order_real(order_number):
     """Track REAL Shopify order"""
-    if not shopify_connected:
-        return "❌ Shopify integration not configured. Contact administrator."
-    
     try:
-        orders = shopify.Order.find(name=f"#{order_number}")
-        
+        # FIX 2: Shopify API uses '#' prefix for order names
+        orders = shopify.Order.find(name=f"#{order_number}", status="any")
+
         if not orders:
-            return f"❌ Order #{order_number} not found in the system."
-        
+            return f"❌ Order #{order_number} not found. Please check your order number."
+
         order = orders[0]
-        
-        response = f"""
-📦 **Order Tracking - #{order.order_number}**
 
-**Customer:** {order.customer.first_name} {order.customer.last_name}
-**Email:** {order.email}
+        # FIX 3: Safe access to customer (guest orders may have no customer object)
+        customer_name = "Guest"
+        customer_email = getattr(order, "email", "N/A")
+        if hasattr(order, "customer") and order.customer:
+            customer_name = f"{order.customer.first_name} {order.customer.last_name}".strip()
 
-**Status:** {order.financial_status.upper()} ✅
+        # FIX 4: Safe access to shipping address (digital products may not have one)
+        shipping_info = "No shipping address on file."
+        if hasattr(order, "shipping_address") and order.shipping_address:
+            addr = order.shipping_address
+            shipping_info = (
+                f"{getattr(addr, 'address1', '')}\n"
+                f"{getattr(addr, 'city', '')}, "
+                f"{getattr(addr, 'province', '')} "
+                f"{getattr(addr, 'zip', '')}"
+            ).strip()
 
-**Items Ordered:**
-"""
-        
-        for item in order.line_items:
-            response += f"\n• {item.name} (Qty: {item.quantity}) - ${item.price}"
-        
-        response += f"""
+        # FIX 5: Safe access to fulfillments (order may not be fulfilled yet)
+        tracking_number = "Processing — not yet shipped"
+        if order.fulfillments:
+            tracking_number = getattr(order.fulfillments[0], "tracking_number", "N/A") or "N/A"
 
-**Order Total:** ${order.total_price}
+        # FIX 6: Safe access to financial_status and fulfillment_status
+        financial_status = getattr(order, "financial_status", "unknown").upper()
+        fulfillment_status = getattr(order, "fulfillment_status", None)
 
-**Shipping Address:**
-{order.shipping_address.address1}
-{order.shipping_address.city}, {order.shipping_address.province} {order.shipping_address.zip}
+        items_text = "\n".join(
+            [f"• {item.name} (Qty: {item.quantity}) — ${item.price}" for item in order.line_items]
+        )
 
-**Tracking Number:** {order.fulfillments[0].tracking_number if order.fulfillments else 'Processing'}
+        response = (
+            f"📦 **Order Tracking — #{order.order_number}**\n\n"
+            f"**Customer:** {customer_name}\n"
+            f"**Email:** {customer_email}\n\n"
+            f"**Payment Status:** {financial_status}\n"
+            f"**Fulfillment Status:** {str(fulfillment_status).title() if fulfillment_status else 'Unfulfilled'}\n\n"
+            f"**Items Ordered:**\n{items_text}\n\n"
+            f"**Order Total:** ${order.total_price}\n\n"
+            f"**Shipping Address:**\n{shipping_info}\n\n"
+            f"**Tracking Number:** {tracking_number}\n\n"
+            f"**Order Date:** {order.created_at[:10]}\n\n"
+            "---\n**Available Actions:**"
+        )
 
-**Order Date:** {order.created_at.strftime('%B %d, %Y')}
+        if fulfillment_status is None:
+            response += f"\n🚫 **Cancel Order** — Reply: `cancel order {order_number}`"
 
----
+        if fulfillment_status == "fulfilled":
+            response += f"\n🔄 **Return Order** — Reply: `return order {order_number}`"
 
-**Available Actions:**
-"""
-        
-        if order.financial_status == 'pending' or order.fulfillment_status == None:
-            response += f"\n🚫 **Cancel Order** - Reply 'cancel order {order_number}'"
-        
-        if order.fulfillment_status == 'fulfilled':
-            response += f"\n🔄 **Return Order** - Reply 'return order {order_number}'"
-        
         return response
-        
+
     except Exception as e:
         return f"❌ Error tracking order: {str(e)}"
 
+
 def cancel_order_real(order_number):
     """Cancel REAL Shopify order"""
-    if not shopify_connected:
-        return "❌ Shopify integration not configured."
-    
     try:
-        orders = shopify.Order.find(name=f"#{order_number}")
-        
+        orders = shopify.Order.find(name=f"#{order_number}", status="any")
+
         if not orders:
             return f"❌ Order #{order_number} not found."
-        
+
         order = orders[0]
-        
-        if order.fulfillment_status in ['fulfilled', 'partial']:
-            return f"""
-❌ **Cannot Cancel Order #{order_number}**
+        fulfillment_status = getattr(order, "fulfillment_status", None)
 
-**Reason:** Order has already been fulfilled/shipped.
+        if fulfillment_status in ["fulfilled", "partial"]:
+            return (
+                f"❌ **Cannot Cancel Order #{order_number}**\n\n"
+                f"**Reason:** Order has already been fulfilled/shipped.\n\n"
+                f"**Alternative:** You can initiate a return instead.\n"
+                f"Type: `return order {order_number}`"
+            )
 
-**Alternative:** You can initiate a return instead.
-Type: "return order {order_number}"
-"""
-        
-        order.cancel()
-        
-        return f"""
-✅ **Order #{order_number} Cancelled Successfully!**
+        # FIX 7: cancel() needs to be called correctly — pass reason as param
+        order.cancel({"reason": "customer"})
 
-**Refund Details:**
-• Amount: ${order.total_price}
-• Method: Original payment method
-• Processing Time: 3-5 business days
-• Confirmation email sent to: {order.email}
+        customer_email = getattr(order, "email", "your email")
 
-😊 **We're sorry to see this order go!**
+        return (
+            f"✅ **Order #{order_number} Cancelled Successfully!**\n\n"
+            f"**Refund Details:**\n"
+            f"• Amount: ${order.total_price}\n"
+            f"• Method: Original payment method\n"
+            f"• Processing Time: 3–5 business days\n"
+            f"• Confirmation email sent to: {customer_email}\n\n"
+            "😊 **We're sorry to see this order go!**\n\n"
+            "💰 Use code **COMEBACK20** for 20% off your next order!"
+        )
 
-💰 Use code **COMEBACK20** for 20% off your next order!
-"""
-        
     except Exception as e:
         return f"❌ Error cancelling order: {str(e)}"
 
+
 def return_order_real(order_number):
     """Process REAL Shopify return"""
-    if not shopify_connected:
-        return "❌ Shopify integration not configured."
-    
     try:
-        orders = shopify.Order.find(name=f"#{order_number}")
-        
+        orders = shopify.Order.find(name=f"#{order_number}", status="any")
+
         if not orders:
             return f"❌ Order #{order_number} not found."
-        
+
         order = orders[0]
-        
-        if order.fulfillment_status != 'fulfilled':
-            return f"""
-❌ **Cannot Return Order #{order_number}**
+        fulfillment_status = getattr(order, "fulfillment_status", None)
 
-**Reason:** Order hasn't been delivered yet.
+        if fulfillment_status != "fulfilled":
+            return (
+                f"❌ **Cannot Return Order #{order_number}**\n\n"
+                "**Reason:** Order hasn't been fully delivered yet.\n\n"
+                "Returns can only be initiated after delivery."
+            )
 
-Returns can only be initiated after delivery.
-"""
-        
-        order.note = f"Return requested on {datetime.now().strftime('%Y-%m-%d')}"
+        # FIX 8: Correct way to add a note — fetch, update, save
+        existing_note = getattr(order, "note", "") or ""
+        order.note = f"{existing_note} | Return requested on {datetime.now().strftime('%Y-%m-%d')}".strip(" |")
         order.save()
-        
-        return f"""
-✅ **Return Initiated for Order #{order_number}**
 
-**Return Details:**
-• Customer: {order.customer.first_name} {order.customer.last_name}
-• Order Total: ${order.total_price}
+        customer_name = "Valued Customer"
+        customer_email = getattr(order, "email", "N/A")
+        if hasattr(order, "customer") and order.customer:
+            customer_name = f"{order.customer.first_name} {order.customer.last_name}".strip()
 
-📧 **Confirmation sent to:** {order.email}
+        return (
+            f"✅ **Return Initiated for Order #{order_number}**\n\n"
+            f"**Return Details:**\n"
+            f"• Customer: {customer_name}\n"
+            f"• Order Total: ${order.total_price}\n\n"
+            f"📧 **Confirmation sent to:** {customer_email}\n\n"
+            "💝 **Sorry these didn't work out!**\n"
+            "Use **RETURN15** for 15% off your next order."
+        )
 
-💝 **Sorry these didn't work out!**
-Use **RETURN15** for 15% off your next order.
-"""
-        
     except Exception as e:
         return f"❌ Error processing return: {str(e)}"
 
+
 def recommend_products_real(category=None, budget=None):
     """Get REAL products from Shopify"""
-    if not shopify_connected:
-        return "❌ Shopify integration not configured."
-    
     try:
-        products = shopify.Product.find(limit=50)
-        
-        if category:
-            products = [p for p in products if category.lower() in p.product_type.lower()]
-        
-        if budget:
-            products = [p for p in products if float(p.variants[0].price) <= budget]
-        
-        products = sorted(products, key=lambda x: x.created_at, reverse=True)[:3]
-        
-        if not products:
-            return "😕 No products found matching your criteria."
-        
-        response = "✨ **Perfect Recommendations For You:**\n\n"
-        
-        for product in products:
-            variant = product.variants[0]
-            stock_status = "✅ In Stock" if variant.inventory_quantity > 10 else f"⚠️ Only {variant.inventory_quantity} left!"
-            
-            response += f"""
----
-**{product.title}**
-💰 ${variant.price}
-📦 {stock_status}
-🔗 https://{SHOPIFY_CONFIG['shop_url']}/products/{product.handle}
+        # FIX 9: Fetch more products and handle empty results gracefully
+        products = shopify.Product.find(limit=50, status="active")
 
-"""
-        
+        if not products:
+            return "😕 No products found in the store right now."
+
+        # Filter by category if given
+        if category:
+            filtered = [
+                p for p in products
+                if category.lower() in (p.product_type or "").lower()
+                or category.lower() in (p.title or "").lower()
+                or any(category.lower() in (tag or "").lower() for tag in (p.tags or "").split(","))
+            ]
+            products = filtered if filtered else products  # fallback to all if no match
+
+        # Filter by budget
+        if budget:
+            products = [
+                p for p in products
+                if p.variants and float(p.variants[0].price) <= budget
+            ]
+
+        # FIX 10: Sort by created_at safely (it's a string, not datetime)
+        products = sorted(products, key=lambda x: x.created_at or "", reverse=True)[:3]
+
+        if not products:
+            return "😕 No products found matching your criteria. Try a different budget or category."
+
+        response = "✨ **Perfect Recommendations For You:**\n\n"
+
+        for product in products:
+            # FIX 11: Guard against products with no variants
+            if not product.variants:
+                continue
+
+            variant = product.variants[0]
+            price = float(variant.price)
+            inventory = getattr(variant, "inventory_quantity", None)
+
+            if inventory is None:
+                stock_status = "✅ Available"
+            elif inventory > 10:
+                stock_status = "✅ In Stock"
+            elif inventory > 0:
+                stock_status = f"⚠️ Only {inventory} left!"
+            else:
+                stock_status = "❌ Out of Stock"
+
+            product_url = f"https://{SHOPIFY_CONFIG['shop_url']}/products/{product.handle}"
+
+            response += (
+                f"---\n"
+                f"**{product.title}**\n"
+                f"💰 ${price:.2f}\n"
+                f"📦 {stock_status}\n"
+                f"🔗 [View Product]({product_url})\n\n"
+            )
+
         return response
-        
+
     except Exception as e:
         return f"❌ Error fetching products: {str(e)}"
+
 
 # ============================================
 # DEMO MODE FUNCTIONS (Fallback)
 # ============================================
 
 def track_order_demo(order_number):
-    """Track order in demo mode"""
     order_num = order_number.strip().upper()
-    
+
     if order_num in SAMPLE_ORDERS:
         order = SAMPLE_ORDERS[order_num]
-        
-        response = f"""
-📦 **Order Tracking - #{order['order_number']}** (DEMO)
 
-**Status:** {order['status']} ✅
+        items_text = "\n".join([f"• {item}" for item in order["items"]])
 
-**Items Ordered:**
-{chr(10).join(['• ' + item for item in order['items']])}
+        response = (
+            f"📦 **Order Tracking — #{order['order_number']}** *(DEMO)*\n\n"
+            f"**Status:** {order['status']} ✅\n\n"
+            f"**Items Ordered:**\n{items_text}\n\n"
+            f"**Order Total:** ${order['total']:.2f}\n\n"
+            f"**Tracking Number:** {order['tracking']}\n\n"
+            f"**Estimated Delivery:** {order['estimated_delivery']}\n\n"
+            "---\n**Available Actions:**"
+        )
 
-**Order Total:** ${order['total']:.2f}
+        if order["can_cancel"]:
+            response += f"\n🚫 **Cancel Order** — Reply: `cancel order {order_num}`"
 
-**Tracking Number:** {order['tracking']}
+        if order["can_return"]:
+            response += f"\n🔄 **Return Order** — Reply: `return order {order_num}`"
 
-**Estimated Delivery:** {order['estimated_delivery']}
-
----
-
-**Available Actions:**
-"""
-        
-        if order['can_cancel']:
-            response += f"\n🚫 **Cancel Order** - Reply 'cancel order {order_num}'"
-        
-        if order['can_return']:
-            response += f"\n🔄 **Return Order** - Reply 'return order {order_num}'"
-        
         return response
     else:
-        return f"❌ Order #{order_num} not found in demo system.\n\nTry: 12345, 67890, or 54321"
+        return (
+            f"❌ Order #{order_num} not found in demo system.\n\n"
+            "**Try these demo order numbers:** `12345`, `67890`, or `54321`"
+        )
+
 
 def cancel_order_demo(order_number):
-    """Cancel order in demo mode"""
     order_num = order_number.strip().upper()
-    
+
     if order_num in SAMPLE_ORDERS:
         order = SAMPLE_ORDERS[order_num]
-        
-        if order['can_cancel']:
-            return f"""
-✅ **Order #{order_num} Cancelled Successfully!** (DEMO)
 
-**Refund Details:**
-• Amount: ${order['total']:.2f}
-• Processing Time: 3-5 business days
-
-💰 Use code **COMEBACK20** for 20% off your next order!
-"""
+        if order["can_cancel"]:
+            return (
+                f"✅ **Order #{order_num} Cancelled Successfully!** *(DEMO)*\n\n"
+                f"**Refund Details:**\n"
+                f"• Amount: ${order['total']:.2f}\n"
+                f"• Processing Time: 3–5 business days\n\n"
+                "💰 Use code **COMEBACK20** for 20% off your next order!"
+            )
         else:
-            return f"❌ Cannot cancel order #{order_num} - Status: {order['status']}"
+            return (
+                f"❌ **Cannot Cancel Order #{order_num}**\n\n"
+                f"**Reason:** Order status is *{order['status']}* — cancellation not allowed.\n\n"
+                "Contact support if you need help."
+            )
     else:
-        return "❌ Order not found."
+        return "❌ Order not found. Try demo order `67890` which can be cancelled."
+
 
 def return_order_demo(order_number):
-    """Return order in demo mode"""
     order_num = order_number.strip().upper()
-    
+
     if order_num in SAMPLE_ORDERS:
         order = SAMPLE_ORDERS[order_num]
-        
-        if order['can_return']:
-            return f"""
-✅ **Return Initiated for Order #{order_num}** (DEMO)
 
-**Refund Amount:** ${order['total']:.2f}
-
-📧 Check your email for return shipping label!
-
-💝 Use **RETURN15** for 15% off your next order.
-"""
+        if order["can_return"]:
+            return (
+                f"✅ **Return Initiated for Order #{order_num}** *(DEMO)*\n\n"
+                f"**Refund Amount:** ${order['total']:.2f}\n\n"
+                "📧 Check your email for the return shipping label!\n\n"
+                "💝 Use **RETURN15** for 15% off your next order."
+            )
         else:
-            return f"❌ Cannot return order #{order_num} - Status: {order['status']}"
+            return (
+                f"❌ **Cannot Return Order #{order_num}**\n\n"
+                f"**Reason:** Order status is *{order['status']}*.\n\n"
+                "Only delivered orders can be returned. Try demo order `54321`."
+            )
     else:
-        return "❌ Order not found."
+        return "❌ Order not found. Try demo order `54321` which can be returned."
+
 
 def recommend_products_demo(category=None, budget=None):
-    """Recommend products in demo mode"""
-    
-    if category:
-        filtered = [p for p in PRODUCTS if category.lower() in p['category'].lower() or category.lower() in p['name'].lower()]
-    else:
-        filtered = PRODUCTS
-    
-    if budget:
-        filtered = [p for p in filtered if p['price'] <= budget]
-    
-    if not filtered:
-        filtered = PRODUCTS[:3]
-    
-    filtered = sorted(filtered, key=lambda x: x['rating'], reverse=True)[:3]
-    
-    response = "✨ **Perfect Recommendations For You:** (DEMO)\n\n"
-    
-    for product in filtered:
-        stock_status = "✅ In Stock" if product['stock'] > 10 else f"⚠️ Only {product['stock']} left!"
-        
-        response += f"""
----
-{product['image']} **{product['name']}**
-💰 ${product['price']:.2f}
-⭐ {product['rating']}/5.0
-📦 {stock_status}
+    filtered = PRODUCTS
 
-"""
-    
+    if category:
+        filtered = [
+            p for p in filtered
+            if category.lower() in p["category"].lower()
+            or category.lower() in p["name"].lower()
+        ]
+
+    if budget:
+        filtered = [p for p in filtered if p["price"] <= budget]
+
+    # Fallback to all products if nothing matches
+    if not filtered:
+        filtered = PRODUCTS
+
+    filtered = sorted(filtered, key=lambda x: x["rating"], reverse=True)[:3]
+
+    response = "✨ **Perfect Recommendations For You:** *(DEMO)*\n\n"
+
+    for product in filtered:
+        stock_status = (
+            "✅ In Stock" if product["stock"] > 10 else f"⚠️ Only {product['stock']} left!"
+        )
+
+        response += (
+            f"---\n"
+            f"{product['image']} **{product['name']}**\n"
+            f"💰 ${product['price']:.2f}\n"
+            f"⭐ {product['rating']}/5.0\n"
+            f"📦 {stock_status}\n\n"
+        )
+
     return response
+
 
 # ============================================
 # WRAPPER FUNCTIONS (Auto-select Real or Demo)
 # ============================================
 
 def track_order(order_number):
-    """Track order - auto select real or demo"""
-    if shopify_connected:
-        return track_order_real(order_number)
-    else:
-        return track_order_demo(order_number)
+    return track_order_real(order_number) if shopify_connected else track_order_demo(order_number)
 
 def cancel_order(order_number):
-    """Cancel order - auto select real or demo"""
-    if shopify_connected:
-        return cancel_order_real(order_number)
-    else:
-        return cancel_order_demo(order_number)
+    return cancel_order_real(order_number) if shopify_connected else cancel_order_demo(order_number)
 
 def return_order(order_number):
-    """Return order - auto select real or demo"""
-    if shopify_connected:
-        return return_order_real(order_number)
-    else:
-        return return_order_demo(order_number)
+    return return_order_real(order_number) if shopify_connected else return_order_demo(order_number)
 
 def recommend_products(category=None, budget=None):
-    """Recommend products - auto select real or demo"""
-    if shopify_connected:
-        return recommend_products_real(category, budget)
-    else:
-        return recommend_products_demo(category, budget)
+    return (
+        recommend_products_real(category, budget)
+        if shopify_connected
+        else recommend_products_demo(category, budget)
+    )
 
 # ============================================
 # HELPER FUNCTIONS
 # ============================================
 
 def capture_lead(name=None, email=None):
-    """Capture user information"""
     if email:
         st.session_state.user_email = email
         st.session_state.user_name = name if name else "Valued Customer"
-        
-        return f"""
-🎉 **Welcome to the VIP Club, {st.session_state.user_name}!**
 
-**Your Welcome Gift:** 🎁
-Use code **VIP20** for 20% off your first order!
-
-Check your email ({email}) for exclusive deals!
-"""
+        return (
+            f"🎉 **Welcome to the VIP Club, {st.session_state.user_name}!**\n\n"
+            "**Your Welcome Gift:** 🎁\n"
+            "Use code **VIP20** for 20% off your first order!\n\n"
+            f"Check your email ({email}) for exclusive deals!"
+        )
     else:
-        return "💌 Join our VIP Club! Just reply with your email: 'my email is you@email.com'"
+        return "💌 Join our VIP Club! Reply with your email:\n`my email is you@email.com`"
+
 
 def upsell_offer():
-    """Generate upsell offers"""
-    return """
-🎉 **Special Offer Just For You!**
-
-**Buy 2, Get 1 50% OFF**
-
-**Plus:** Use code **BUNDLE15** for extra 15% off!
-
-Interested? Tell me what you're shopping for!
-"""
+    return (
+        "🎉 **Special Offer Just For You!**\n\n"
+        "**Buy 2, Get 1 at 50% OFF**\n\n"
+        "**Plus:** Use code **BUNDLE15** for extra 15% off!\n\n"
+        "Interested? Tell me what you're shopping for!"
+    )
 
 # ============================================
-# MAIN RESPONSE FUNCTION
+# FIX 12: Improved order number extraction
+# Bug: Original only checked 5-digit numbers — Shopify order numbers can be 4+ digits
+# ============================================
+
+def extract_order_number(text):
+    """Extract order number from user message (handles #1001, order 1001, etc.)"""
+    import re
+    # Match optional # followed by digits (4 or more)
+    match = re.search(r"#?(\d{4,})", text)
+    return match.group(1) if match else None
+
+
+def extract_email(text):
+    """Extract email from user message"""
+    import re
+    match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+    return match.group(0) if match else None
+
+
+def extract_budget(text):
+    """Extract budget amount from user message"""
+    import re
+    match = re.search(r"\$?\s*(\d+)", text)
+    return float(match.group(1)) if match else None
+
+# ============================================
+# MAIN RESPONSE FUNCTION (with all fixes applied)
 # ============================================
 
 def get_bot_response(user_message):
     """Generate intelligent responses"""
-    
+
     msg = user_message.lower()
-    
-    # ORDER TRACKING
-    if any(word in msg for word in ['track', 'tracking', 'where is my order']):
+
+    # ---- ORDER TRACKING ----
+    if any(word in msg for word in ["track", "tracking", "where is my order", "where's my order"]):
+        order_num = extract_order_number(user_message)
+        if order_num:
+            return track_order(order_num)
+        return (
+            "📦 To track your order, please include your order number.\n\n"
+            "**Example:** `track order 12345`\n\n"
+            "*(Demo: Try order numbers 12345, 67890, or 54321)*"
+        )
+
+    # ---- CANCEL ORDER ----
+    if "cancel order" in msg or ("cancel" in msg and "order" in msg):
+        order_num = extract_order_number(user_message)
+        if order_num:
+            return cancel_order(order_num)
+        return "Please provide your order number.\n**Example:** `cancel order 67890`"
+
+    # ---- RETURN / REFUND ----
+    if ("return order" in msg or "refund order" in msg
+            or ("return" in msg and "order" in msg)
+            or ("refund" in msg and "order" in msg)):
+        order_num = extract_order_number(user_message)
+        if order_num:
+            return return_order(order_num)
+        return "Please provide your order number.\n**Example:** `return order 54321`"
+
+    # ---- PRODUCT RECOMMENDATIONS ----
+    if any(word in msg for word in ["recommend", "show me", "looking for", "need", "find", "suggest"]):
+        categories = ["dress", "shoe", "jean", "jacket", "bag", "top", "shirt", "pant"]
+        matched_cat = next((cat for cat in categories if cat in msg), None)
+
+        budget = None
+        if "$" in msg or "under" in msg or "below" in msg or "budget" in msg:
+            budget = extract_budget(user_message)
+
+        return recommend_products(category=matched_cat, budget=budget)
+
+    # ---- PRODUCTS UNDER BUDGET (without recommendation keyword) ----
+    if "under" in msg or "below" in msg:
+        budget = extract_budget(user_message)
+        if budget:
+            return recommend_products(budget=budget)
+
+    # ---- LEAD CAPTURE ----
+    email = extract_email(user_message)
+    if email:
         words = user_message.split()
-        for word in words:
-            if word.isdigit() and len(word) == 5:
-                return track_order(word)
-        
-        return "📦 To track your order, reply with: 'track order 12345' (use your order number)\n\n**Demo:** Try 'track order 12345'"
-    
-    # CANCEL ORDER
-    if 'cancel order' in msg:
-        words = user_message.split()
-        for word in words:
-            if word.isdigit():
-                return cancel_order(word)
-        return "Please provide order number. Example: 'cancel order 12345'"
-    
-    # RETURN ORDER
-    if 'return order' in msg or 'refund order' in msg:
-        words = user_message.split()
-        for word in words:
-            if word.isdigit():
-                return return_order(word)
-        return "Please provide order number. Example: 'return order 54321'"
-    
-    # PRODUCT RECOMMENDATIONS
-    if any(word in msg for word in ['recommend', 'show me', 'looking for', 'need']):
-        categories = ['dress', 'shoe', 'jean', 'jacket', 'bag']
-        for cat in categories:
-            if cat in msg:
-                return recommend_products(category=cat)
-        
-        if '$' in msg or 'under' in msg:
-            words = user_message.replace('$', '').split()
-            for word in words:
-                if word.isdigit():
-                    return recommend_products(budget=float(word))
-        
-        return recommend_products()
-    
-    # LEAD CAPTURE
-    if '@' in msg and '.' in msg:
-        words = user_message.split()
-        email = [word for word in words if '@' in word and '.' in word][0]
-        name_words = [w for w in words if w.lower() not in ['my', 'email', 'is'] and '@' not in w]
-        name = ' '.join(name_words[:2]) if name_words else None
-        return capture_lead(name=name, email=email)
-    
-    # DEALS & OFFERS
-    if any(word in msg for word in ['deal', 'discount', 'offer', 'sale', 'coupon']):
+        name_words = [
+            w for w in words
+            if w.lower() not in ["my", "email", "is", "it's", "its", "the", "name"] and "@" not in w
+        ]
+        name = " ".join(name_words[:2]).strip() if name_words else None
+        return capture_lead(name=name if name else None, email=email)
+
+    # ---- DEALS & OFFERS ----
+    if any(word in msg for word in ["deal", "discount", "offer", "sale", "coupon", "promo", "code"]):
         return upsell_offer()
-    
-    # GREETING
-    if any(word in msg for word in ['hi', 'hello', 'hey']):
-        return f"""Hello! 😊 Welcome to {STORE_CONFIG['name']}!
 
-**Try these:**
-• "track order 12345" - Track an order
-• "show me dresses" - Get recommendations
-• "any deals?" - See current offers
-• "my email is test@email.com" - Join VIP club
+    # ---- GREETING ----
+    if any(word in msg for word in ["hi", "hello", "hey", "hola", "howdy", "sup"]):
+        return (
+            f"Hello! 😊 Welcome to **{STORE_CONFIG['name']}**!\n\n"
+            "**Here's what I can do:**\n"
+            "• `track order 12345` — Track an order\n"
+            "• `show me dresses` — Browse products\n"
+            "• `products under $80` — Filter by budget\n"
+            "• `any deals?` — See current offers\n"
+            "• `my email is you@email.com` — Join VIP Club\n\n"
+            "What can I help you with today?"
+        )
 
-What can I help you with?"""
-    
-    # SHIPPING
-    if any(word in msg for word in ['ship', 'delivery']):
-        return f"""📦 **Shipping Info:**
+    # ---- SHIPPING ----
+    if any(word in msg for word in ["ship", "delivery", "shipping", "deliver", "arrive"]):
+        return (
+            "📦 **Shipping Info:**\n\n"
+            f"✅ **Free shipping** on orders over ${STORE_CONFIG['free_shipping']}\n"
+            f"✅ **Standard:** {STORE_CONFIG['delivery_days']} business days\n"
+            "✅ **Express:** 1–2 days (+$15)\n\n"
+            "Track your order anytime: `track order [number]`"
+        )
 
-✅ Free shipping on orders ${STORE_CONFIG['free_shipping']}+
-✅ Standard: {STORE_CONFIG['delivery_days']} business days
-✅ Express: 1-2 days (+$15)
+    # ---- RETURNS ----
+    if any(word in msg for word in ["return", "refund", "exchange"]):
+        return (
+            "🔄 **Returns & Refunds:**\n\n"
+            f"✅ **{STORE_CONFIG['return_days']}-day** free returns\n"
+            "✅ Free return shipping label emailed to you\n"
+            "✅ Full refund in 5–7 business days\n\n"
+            "**Start a return:** `return order [number]`\n"
+            "*(Demo: Try `return order 54321`)*"
+        )
 
-Track anytime: "track order [number]"
-"""
-    
-    # RETURNS
-    if any(word in msg for word in ['return', 'refund']):
-        return f"""🔄 **Returns:**
+    # ---- PAYMENT ----
+    if any(word in msg for word in ["payment", "pay", "checkout", "credit", "paypal"]):
+        return (
+            "💳 **Payment Methods Accepted:**\n\n"
+            "✅ Visa / Mastercard / Amex\n"
+            "✅ PayPal\n"
+            "✅ Apple Pay\n"
+            "✅ Google Pay\n"
+            "✅ Shop Pay (Buy Now, Pay Later)\n\n"
+            "🔒 100% Secure & Encrypted Checkout!"
+        )
 
-✅ {STORE_CONFIG['return_days']}-day free returns
-✅ Free return shipping
-✅ Full refund in 5-7 days
+    # ---- CONTACT ----
+    if any(word in msg for word in ["contact", "support", "help", "human", "agent", "phone"]):
+        return (
+            "📞 **Contact & Support:**\n\n"
+            f"📧 **Email:** {STORE_CONFIG['email']}\n"
+            f"📱 **Phone:** {STORE_CONFIG['phone']}\n"
+            "⏰ **Hours:** Mon–Fri, 9AM–6PM EST\n\n"
+            "But I'm here 24/7! How can I help? 😊"
+        )
 
-**Start return:** "return order [number]"
-**Demo:** Try "return order 54321"
-"""
-    
-    # PAYMENT
-    if any(word in msg for word in ['payment', 'pay']):
-        return """💳 **Payment Methods:**
+    # ---- SIZE GUIDE ----
+    if any(word in msg for word in ["size", "sizing", "fit", "measurement"]):
+        return (
+            "📏 **Size Guide:**\n\n"
+            "| Size | US | Chest | Waist |\n"
+            "|------|----|-------|-------|\n"
+            "| S    | 4-6 | 34\" | 27\" |\n"
+            "| M    | 8-10 | 36\" | 29\" |\n"
+            "| L    | 12-14 | 38\" | 31\" |\n"
+            "| XL   | 16-18 | 41\" | 34\" |\n\n"
+            "💡 Unsure? We recommend sizing up for a relaxed fit."
+        )
 
-✅ Credit/Debit Cards
-✅ PayPal
-✅ Apple Pay
-✅ Google Pay
+    # ---- THANK YOU ----
+    if any(word in msg for word in ["thank", "thanks", "thx", "ty"]):
+        return "You're welcome! 😊\n\nAnything else I can help you with?"
 
-🔒 100% Secure checkout!
-"""
-    
-    # CONTACT
-    if any(word in msg for word in ['contact', 'email', 'phone']):
-        return f"""📞 **Contact:**
-
-📧 {STORE_CONFIG['email']}
-📱 {STORE_CONFIG['phone']}
-⏰ Mon-Fri, 9AM-6PM
-
-But I'm here now! How can I help? 😊
-"""
-    
-    # THANK YOU
-    if any(word in msg for word in ['thank', 'thanks']):
-        return "You're welcome! 😊\n\nAnything else I can help with?"
-    
-    # DEFAULT
-    return f"""I can help you with:
-
-**📦 Orders:**
-• "track order 12345"
-• "cancel order 67890"
-• "return order 54321"
-
-**🔍 Shopping:**
-• "show me dresses"
-• "products under $100"
-
-**💰 Deals:**
-• "any discounts?"
-
-**What would you like to do?**"""
+    # ---- DEFAULT ----
+    return (
+        "I'm not sure I understood that 🤔 Here's what I can help with:\n\n"
+        "**📦 Orders:**\n"
+        "• `track order 12345`\n"
+        "• `cancel order 67890`\n"
+        "• `return order 54321`\n\n"
+        "**🔍 Shopping:**\n"
+        "• `show me dresses`\n"
+        "• `products under $100`\n\n"
+        "**💰 Deals & Info:**\n"
+        "• `any discounts?`\n"
+        "• `shipping info`\n"
+        "• `return policy`\n\n"
+        "What would you like to do?"
+    )
 
 # ============================================
 # STREAMLIT UI
 # ============================================
 
-# Title
 st.title(f"🛍️ {STORE_CONFIG['name']} AI Assistant")
-st.markdown("### Your Personal Shopping Helper 24/7")
+st.markdown("### Your Personal Shopping Helper — 24/7")
 
-# Sidebar
+# ---- Sidebar ----
 with st.sidebar:
     st.header(f"🛍️ {STORE_CONFIG['name']}")
-    
-    # Show connection status
+
     if shopify_connected:
-        st.success("✅ LIVE - Real Shopify Connected")
+        st.success("✅ LIVE — Real Shopify Connected")
+    elif USE_REAL_SHOPIFY:
+        st.error("❌ Shopify connection failed — check credentials")
     else:
-        st.info("📋 DEMO MODE - Using sample data")
-    
+        st.info("📋 DEMO MODE — Using sample data")
+
     st.markdown("---")
-    
+
     st.subheader("🔥 Try These!")
     st.code("track order 12345")
     st.code("show me dresses")
+    st.code("products under $80")
     st.code("any deals?")
     st.code("my email is test@email.com")
-    
-    st.markdown("---")
-    
-    st.metric("Messages", len(st.session_state.messages))
-    
-    if st.button("🗑️ New Chat", use_container_width=True):
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": f"Fresh start! How can I help you at {STORE_CONFIG['name']}?"
-        }]
-        st.rerun()
-    
-    st.markdown("---")
-    
-    st.subheader("📞 Support")
-    st.markdown(f"""
-📧 {STORE_CONFIG['email']}  
-📱 {STORE_CONFIG['phone']}
-""")
+    st.code("sizing guide")
+    st.code("return order 54321")
 
-# Display chat
+    st.markdown("---")
+    st.metric("Messages", len(st.session_state.messages))
+
+    if st.button("🗑️ New Chat", use_container_width=True):
+        st.session_state.messages = [
+            {
+                "role": "assistant",
+                "content": f"Fresh start! 👋 How can I help you at **{STORE_CONFIG['name']}** today?",
+            }
+        ]
+        st.session_state.user_email = None
+        st.session_state.user_name = None
+        st.rerun()
+
+    st.markdown("---")
+    st.subheader("📞 Support")
+    st.markdown(f"📧 {STORE_CONFIG['email']}\n\n📱 {STORE_CONFIG['phone']}")
+
+    # Show VIP status if captured
+    if st.session_state.user_email:
+        st.markdown("---")
+        st.success(f"👑 VIP: {st.session_state.user_name}\n{st.session_state.user_email}")
+
+# ---- Chat Display ----
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
+# ---- Chat Input ----
 if user_input := st.chat_input("Type your message..."):
-    
+
     st.session_state.messages.append({"role": "user", "content": user_input})
-    
+
     with st.chat_message("user"):
         st.markdown(user_input)
-    
+
     with st.chat_message("assistant"):
         with st.spinner("✨ Thinking..."):
             response = get_bot_response(user_input)
             st.markdown(response)
-    
+
     st.session_state.messages.append({"role": "assistant", "content": response})
 
-# Footer
+# ---- Footer ----
 st.markdown("---")
-st.markdown(f"""
-<div style='text-align: center; color: #666;'>
-    <p>⚡ Powered by AI | © 2024 {STORE_CONFIG['name']}</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    f"<div style='text-align:center; color:#888;'>"
+    f"⚡ Powered by AI | © 2024 {STORE_CONFIG['name']}"
+    f"</div>",
+    unsafe_allow_html=True,
+)
